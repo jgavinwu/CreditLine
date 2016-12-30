@@ -1,3 +1,4 @@
 *.csv
 *.csv.gz
 CLI_Documents_Descriptions
+.ipynb_checkpoints
