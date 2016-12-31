@@ -1,1 +1,7 @@
-# Credit line adjustment project
+# Project Name
+
+Credit line adjustment decisioning
+
+## Code Purpose
+
+Exploratory analysis
