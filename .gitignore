@@ -2,3 +2,5 @@
 *.csv.gz
 CLI_Documents_Descriptions
 .ipynb_checkpoints
+TEST
+test_credentials.txt
