@@ -18,6 +18,11 @@ from sklearn.preprocessing import scale
 from sklearn import (manifold, decomposition, ensemble, discriminant_analysis, random_projection)
 from dateutil.parser import parse
 from collections import Counter
+import plotly.plotly as plt
+import plotly.offline as plo
+from plotly.graph_objs import *
+import plotly
+plo.init_notebook_mode()
 # from sklearn import cross_validation, metrics
 # from sklearn.grid_search import GridSearchCV
 # from sklearn import model_selection
@@ -37,7 +42,7 @@ os.chdir('/project/')
 sam = pd.read_csv('./Data/cli_cma_joined_1pct.csv', dtype=object)
 # sam_cma = pd.read_csv('./Data/cli_cma_1pct.csv', dtype=object)
 # sam_all = pd.merge(sam, sam_cma, on=['CREDITCYCLEFACTMKEY'])
-sam.shape
+#sam.shape
 
 
 # In[4]:
@@ -100,7 +105,7 @@ sam2['INCRTYPE'] = sam2['INCRTYPE'].fillna('Unknown')
 
 # In[ ]:
 
-sam2['CURRENTDAYSPASTDUE'].value_counts()
+#sam2['CURRENTDAYSPASTDUE'].value_counts()
 
 
 # In[11]:
@@ -114,7 +119,7 @@ all_con = []
 dd = dict()
 with open('./Data/data_dict.txt', 'a') as outfile:
 	for col_name in columns_in:
-		print col_name
+#		print col_name
 		col_out = indata[col_name]
 		if col_name not in columns_excl:
 			if (sam_sum.ix['unique',col_name] > 20):
@@ -134,8 +139,47 @@ with open('./Data/data_dict.txt', 'a') as outfile:
 				all_cat.append(col_name)
 		else: out_data[col_name] = col_out
 
-con_cov = {dd[col]['nam']:dd[col]['cov'] for col in all_con if dd[col]['cov']>20}
-cat_cov = {dd[col]['nam']:dd[col]['cov'] for col in all_cat if dd[col]['cov']>18}
+def load_dict(path):
+    data_dict = []
+    with codecs.open(path,'rU','utf-8') as f:
+	for line in f:
+	   data_dict.append(json.loads(line))
+    return data_dict
+
+ddict = load_dict('./Data/data_dict.txt')
+
+df = sam2
+df = pd.DataFrame(df)
+if df.shape[1] == 1:
+    df = df.T
+#indata = df.replace('-1', np.nan).replace('Discharge NA', np.nan).replace('', np.nan)
+indata = df
+out_data = pd.DataFrame([])
+columns_in = indata.columns.tolist()
+for i in range(len(ddict)):
+    col_name = ddict[i]['nam']
+    default = np.nan if ddict[i]['dft']=='NA' else ddict[i]['dft']
+    if (col_name in columns_in):
+	col_out = indata[col_name]
+	if (ddict[i]['typ']=='con'):
+	    try:
+		col_out = pd.to_numeric(col_out)
+		col_out[(~pd.isnull(col_out)) & (~((col_out>=float(ddict[i]['rng'][0])) & (col_out<=float(ddict[i]['rng'][1]))))]=float(default)
+	    except:
+		col_out = float(default)
+	    out_data[col_name] = col_out
+	if (ddict[i]['typ']=='cat'):
+	    col_out = pd.Series([v if ((pd.isnull(v)) | (v in [key for key in ddict[i]['rng']])) else default for v in col_out])
+	    out_data[col_name] = pd.Series(pd.Categorical([v for v in col_out],categories=ddict[i]['rng']))
+            _  = [out_data[col_name].replace(cat, ddict[i]['rng'][cat], inplace=True) for cat in ddict[i]['rng']]
+    else: out_data[col_name] = default
+
+out_data2 = pd.get_dummies(out_data, prefix_sep='__')
+out_data2 = out_data2[dschema]
+dm = xgb.DMatrix(out_data2, missing=np.nan)
+
+#con_cov = {dd[col]['nam']:dd[col]['cov'] for col in all_con if dd[col]['cov']>20}
+#cat_cov = {dd[col]['nam']:dd[col]['cov'] for col in all_cat if dd[col]['cov']>18}
 
 out_data['CYCLEYD'] = [x[:4]+x[5:7] for x in out_data['CYCLEDATE']]
 all_cust = out_data['DWACCTID'].unique()
@@ -184,24 +228,101 @@ test_tg = all_tg[all_tg['TID']==0]
 train = train_ft.join(train_tg, how='inner')
 test = test_ft.join(test_tg, how='inner')
 
-import matplotlib.pyplot as plt
-import matplotlib.mlab as mlab
-import numpy as np
-import plotly.plotly as py
-from plotly.graph_objs import *
+#import matplotlib.pyplot as plt
+#import matplotlib.mlab as mlab
+#import numpy as np
+#import plotly.plotly as py
+#from plotly.graph_objs import *
+
+from plotly import tools
+
+one_cust_id = out_data['DWACCTID'].sample(1)
+one_cust = out_data.ix[out_data['DWACCTID'].isin(one_cust_id),:]
+trace0 = Scatter(
+        x=train['SCORE01_last'],
+        y=train['SCORE02_last'],
+        mode='markers'
+                )
+trace1 = Histogram(
+    x=out_data['CMA3236'][out_data['CMA3236']<=9999991],
+    histnorm='probability',
+    opacity=0.75
+                )
+trace2 = Histogram(
+    x=train['SCORE02_last'],
+    histnorm='probability',
+    opacity=0.75
+                 )
+data = [trace1]
+layout = Layout(
+    title='CMA3236',
+#    barmode='overlay'
+)
+fig = Figure(data=data, layout=layout)
+plo.plot(fig, filename = './Results/cma3236')
+fig = tools.make_subplots(rows=1, cols=2)
+
+fig.append_trace(trace1, 1, 1)
+fig.append_trace(trace2, 1, 2)
+
+fig['layout'].update(height=600, width=600, title='Histograms Side-by-Side')
+plo.plot(fig, filename='make-subplots')
 
 trace0 = Scatter(
-		x=train['SCORE01_last'],
-		y=train['CYCLEDUE'],
-		mode='markers'
-				)
-trace1 = Scatter(
-		    x=[1, 2, 3, 4],
-			    y=[16, 5, 11, 9]
-				)
-data = Data([trace0])
+		x=one_cust['CYCLEYD'],
+		y=one_cust['CMA3236'],
+#		mode='markers',
+                mode='lines+markers',
+                marker = dict(
+##                    size = 10,
+                    color = 'rgba(152, 0, 0, .8)',
+#                    color=train['CYCLEDUE'],
+                    line = dict(
+                        width = 2,
+                        color = 'rgb(0, 0, 0)'
+                        )
+                    )
+		)
+layout = dict(title = 'CMA3236',
+            yaxis = dict(zeroline = False),
+            xaxis = dict(zeroline = False)
+             )
+data = [trace0]
+fig = Figure(data=data, layout=layout)
+plo.plot(fig, filename='./Results/cli_explore.html')
 
-py.plot(data, filename = 'cli-explore')
+
+trace1 = Scatter(
+    # x=[1, 2, 3, 4],
+    # y=[16, 5, 11, 9]
+		)
+
+trace0 = Box(
+        x=train['SCORE01_last'],
+        name='SCORE01',
+        marker=dict(
+            color='rgb(0, 128, 128)'
+            )
+        )
+trace1 = Box(
+        x=train['SCORE02_last'],
+        name='SCORE02',
+        marker=dict(
+            color='rgb(214, 12, 140)'
+            )
+        )
+data = [trace0, trace1]
+layout = Layout(
+        title='Score Comparo',
+        xaxis=dict(
+        title='Score Value',
+        zeroline=False
+        ),
+        boxmode='group'
+        )
+fig = Figure(data=data, layout=layout)
+plo.plot(fig, filename='./Results/cli_explore.html')
+#py.plot(data, filename = 'cli-explore')
 
 dmat = xgb.DMatrix(train.ix[:, train.columns!='CYCLEDUE'], train.ix[:, 'CYCLEDUE'])
 dmatt = xgb.DMatrix(test.ix[:, test.columns!='CYCLEDUE'], test.ix[:, 'CYCLEDUE'])
@@ -219,24 +340,51 @@ def expand_grid(data_dict):
 	    return pd.DataFrame.from_records(rows, columns=data_dict.keys())
 
 param_grid = expand_grid(grid)
+param_grid_list = param_grid.T.to_dict().values()
 grid_len = param_grid.shape[0]
 i = 0
 
 params = { \
-'eta' : param_grid['eta'][i], \
-'n_estimators' : param_grid['n_estimators'][i], \
-'max_depth' : param_grid['max_depth'][i], \
-'min_child_weight' : param_grid['min_child_weight'][i], \
-'gamma' : param_grid['gamma'][i], \
-'subsample' : param_grid['subsample'][i], \
-'colsample_bytree' : param_grid['colsample_bytree'][i], \
+'eta' : param_grid['eta'][0], \
+'n_estimators' : param_grid['n_estimators'][0], \
+'max_depth' : param_grid['max_depth'][0], \
+'min_child_weight' : param_grid['min_child_weight'][2], \
+'gamma' : param_grid['gamma'][0], \
+'subsample' : param_grid['subsample'][1], \
+'colsample_bytree' : param_grid['colsample_bytree'][0], \
 'objective' : 'reg:linear', \
 'seed' : 206
 }
 
+params['nthread'] = 1
 bst = xgb.train(params, dtrain=dmat)
 pred = bst.predict(dmatt)
 
+wt = bst.get_score(importance_type='weight')
+wt2 = pd.DataFrame(wt.items(), columns=['Feature', 'Weight'])
+print_full(wt2.sort_values(['Weight'], ascending=False))
+
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error
+kf = KFold(n_splits=5)
+
+def cv_run(params):
+    params['nthread'] = 1
+    params['n_estimators'] = int(params['n_estimators'])
+    params['max_depth'] = int(params['max_depth'])
+    params['min_child_weight'] = int(params['min_child_weight'])
+    for train_idx, test_idx in kf.split(train):
+        train_cv_train, train_cv_test = train.ix[train_idx,:], train.ix[test_idx,:]
+        dmat = xgb.DMatrix(train_cv_train.ix[:, train.columns!='CYCLEDUE'], train_cv_train.ix[:, 'CYCLEDUE'])
+        dmatt = xgb.DMatrix(train_cv_test.ix[:, test.columns!='CYCLEDUE'], train_cv_test.ix[:, 'CYCLEDUE'])
+        bst = xgb.train(params, dtrain=dmat)
+        pred = bst.predict(dmatt)
+        mse = mean_squared_error(train_cv_test.ix[:, 'CYCLEDUE'], pred)
+        print(mse)
+
+from multiprocessing import Pool
+pool = Pool(10)
+pool.map(cv_run, param_grid_list)
 
 out_data['GINDEX'] = out_data.sort_values(['DWACCTID', 'CYCLEDATE']).groupby(['DWACCTID']).cumcount()
 
