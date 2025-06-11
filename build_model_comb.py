@@ -68,7 +68,7 @@ columns_excl = ['CUSTOMERSEGMENT', 'DWACCTID', 'CUSTOMERNUMBER', 'RANDOMNUM', 'F
 all_cat = []
 all_con = []
 for col_name in columns_in:
-    print col_name
+    print(col_name)
     col_out = indata[col_name]
     if col_name not in columns_excl:
         if (sam_sum.ix['unique',col_name] > 20):
@@ -111,7 +111,9 @@ dmat = pd.get_dummies(train, prefix_sep='__', drop_first=True)
 # In[21]:
 
 xgdmat = xgb.DMatrix(dmat, target)
-# xgb_model = xgb.XGBRegressor().fit(dmat, target)
+# Train a model so it can be used for prediction below
+xgb_model = xgb.XGBRegressor()
+xgb_model.fit(dmat, target)
 
 
 # In[ ]:
@@ -119,6 +121,8 @@ xgdmat = xgb.DMatrix(dmat, target)
 targett = pd.to_numeric(test['MAX_CYCLEDUE'])
 test.drop(['CUSTOMERNUMBER', 'RANDOMNUM', 'FIRSTELIGIBLEDATE', 'MAX_CYCLEDUE'], axis=1, inplace=True)
 dmatt = pd.get_dummies(test, prefix_sep='__', drop_first=True)
+# Align test data columns with training data
+dmatt = dmatt.reindex(columns=dmat.columns, fill_value=0)
 
 
 # In[ ]:
